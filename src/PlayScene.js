@@ -145,7 +145,7 @@ class PlayScene extends Phaser.Scene {
   // Move deck to middle position
   /////////////////////////////////////////////////////////////////////
   moveDeckToMiddle(callback) {
-    const middleX = 280;
+    const middleX = 250;
     const middleY = this.game.renderer.height / 2;
     let tweensCompleted = 0;
     const totalCards = CARD_SKITGUBBE_IDS.length;
@@ -155,7 +155,7 @@ class PlayScene extends Phaser.Scene {
       this.tweens.add({
         targets: this.spritesHash[cardId],
         x: middleX + (totalCards - i * 2) / 3,
-        y: middleY + (totalCards - i * 1) / 3,
+        y: middleY - 200 + (totalCards - i * 1) / 3,
         duration: SPEED,
         ease: 'Linear',
         onComplete: () => {
@@ -266,8 +266,8 @@ class PlayScene extends Phaser.Scene {
     ];
     const playerNames = ['Left hand', 'Right hand', 'Lower hand'];
     const positions = [
-      { x: this.game.renderer.width / 2 - 60, y: this.game.renderer.height / 2 },
-      { x: this.game.renderer.width / 2 + 60, y: this.game.renderer.height / 2 },
+      { x: this.game.renderer.width / 2 - 30, y: this.game.renderer.height / 2 },
+      { x: this.game.renderer.width / 2 + 30, y: this.game.renderer.height / 2 },
       { x: this.game.renderer.width / 2, y: this.game.renderer.height / 2 }
     ];
 
@@ -297,7 +297,7 @@ class PlayScene extends Phaser.Scene {
       duration: SPEED * 3,
       ease: 'Linear',
       depth: this.current_depth++,
-      angle: leaderIndex === 0 ? -90 : leaderIndex === 1 ? 90 : 0
+      angle: 0
     });
 
     playLeadCard.on('complete', () => {
@@ -338,7 +338,7 @@ class PlayScene extends Phaser.Scene {
         duration: SPEED * 3,
         ease: 'Linear',
         depth: this.current_depth++,
-        angle: opponentIndex === 0 ? -90 : opponentIndex === 1 ? 90 : 0
+        angle: 0
       });
 
       playOpponentCard.on('complete', () => {
@@ -369,7 +369,8 @@ class PlayScene extends Phaser.Scene {
         x: this.game.renderer.width / 2,
         duration: SPEED * 3,
         ease: 'Linear',
-        depth: 1
+        depth: 1,
+        angle: 0
       });
 
       this.disableLowerHandInteractive();
@@ -399,10 +400,11 @@ class PlayScene extends Phaser.Scene {
     let playUpperToTable = this.tweens.add({
       targets: ai_sprite,
       y: this.game.renderer.height / 2,
-      x: this.game.renderer.width / 2 + 40 * 1,  // Place the card to the left
+      x: this.game.renderer.width / 2 + 15,  // Place slightly to the right
       duration: SPEED * 3,
       ease: 'Linear',
-      depth: 2  // Depth 1 is set for the top card
+      depth: this.current_depth++,  // Higher depth to appear on top
+      angle: 0
     });
     playUpperToTable.on('complete', () => {
       this.getTrick();
