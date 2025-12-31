@@ -90,8 +90,21 @@ class PlayScene extends Phaser.Scene {
       console.log(`${playerNames[dealerIndex]} is opponent.`);
     }
 
-    // Deck position (center for 3 players)
-    const deck_pos = 0;
+    // Deck position based on dealer
+    let deckX, deckY;
+    if (dealerPlayer === this.gameSkitgubbe.lowerHandPlayer) {
+      // Lower hand dealer - left corner
+      deckX = 100;
+      deckY = this.game.renderer.height - 100;
+    } else if (dealerPlayer === this.gameSkitgubbe.leftHandPlayer) {
+      // Left hand dealer - left middle
+      deckX = 100;
+      deckY = this.game.renderer.height / 2;
+    } else {
+      // Right hand dealer - lower right corner
+      deckX = this.game.renderer.width - 100;
+      deckY = this.game.renderer.height - 100;
+    }
     // Talk to the game engine ends
 
 
@@ -100,12 +113,11 @@ class PlayScene extends Phaser.Scene {
     //
     for (let i = CARD_SKITGUBBE_IDS.length - 1; i > -1; i--) {
       let card_id = this.gameSkitgubbe.dealer.deck[i];
-      let left = 400; // The left position for the deck.
+      let left = deckX;
 
       this.spritesHash[card_id] = this.add.sprite(
         left + (CARD_SKITGUBBE_IDS.length - i * 2) / 3,
-        this.game.renderer.height / 2 +
-        (CARD_SKITGUBBE_IDS.length - i * 1) / 3 + deck_pos * 200,
+        deckY + (CARD_SKITGUBBE_IDS.length - i * 1) / 3,
         'back');  // Create sprites, and display them outside the screen.
       this.spritesHash[card_id].setScale(1.00);
       this.spritesHash[card_id].setDepth(i);
@@ -121,12 +133,39 @@ class PlayScene extends Phaser.Scene {
         this);
     }
 
-    this.max_depth = CARD_SKITGUBBE_IDS.length;
+    this.current_depth = CARD_SKITGUBBE_IDS.length;
     this.leftX = 0;
     this.rightX = 0;
     this.lowerX = 0;
     console.log('Deck ' + this.gameSkitgubbe.dealer.deck);
     this.dealCards(0, 0);
+  }
+
+  /////////////////////////////////////////////////////////////////////
+  // Move deck to middle position
+  /////////////////////////////////////////////////////////////////////
+  moveDeckToMiddle(callback) {
+    const middleX = 280;
+    const middleY = this.game.renderer.height / 2;
+    let tweensCompleted = 0;
+    const totalCards = CARD_SKITGUBBE_IDS.length;
+
+    for (let i = 0; i < totalCards; i++) {
+      const cardId = this.gameSkitgubbe.dealer.deck[i];
+      this.tweens.add({
+        targets: this.spritesHash[cardId],
+        x: middleX + (totalCards - i * 2) / 3,
+        y: middleY + (totalCards - i * 1) / 3,
+        duration: SPEED,
+        ease: 'Linear',
+        onComplete: () => {
+          tweensCompleted++;
+          if (tweensCompleted === totalCards) {
+            callback();
+          }
+        }
+      });
+    }
   }
 
   /////////////////////////////////////////////////////////////////////
@@ -144,7 +183,7 @@ class PlayScene extends Phaser.Scene {
     ];
 
     const positions = [
-      { y: HAND_DIST_FROM_HORISONTAL_BORDERS, x: HAND_DIST_FROM_VERTICAL_BORDERS, isVertical: true, xKey: 'leftX' },
+      { y: this.game.renderer.height / 2, x: HAND_DIST_FROM_VERTICAL_BORDERS, isVertical: true, xKey: 'leftX' },
       { y: this.game.renderer.height / 2, x: this.game.renderer.width - HAND_DIST_FROM_VERTICAL_BORDERS, isVertical: true, xKey: 'rightX' },
       { y: this.game.renderer.height - HAND_DIST_FROM_HORISONTAL_BORDERS, x: this.game.renderer.width / 2 - HAND_DIST_FROM_VERTICAL_BORDERS, isVertical: false, xKey: 'lowerX' }
     ];
@@ -195,7 +234,7 @@ class PlayScene extends Phaser.Scene {
         angle: angle,
         duration: SPEED,
         ease: 'Linear',
-        depth: this.max_depth++,
+        depth: this.current_depth++,
         onComplete: () => {
           if (++tweensFinished === CARDS_DEALT) {
             counter += CARDS_DEALT;
@@ -208,7 +247,10 @@ class PlayScene extends Phaser.Scene {
               this.gameSkitgubbe.lowerHandPlayer.getHand().forEach(cardId => {
                 this.showFront(cardId);
               });
-              this.playCards();
+              // Move deck to middle after dealing
+              this.moveDeckToMiddle(() => {
+                this.playCards();
+              });
             }
           }
         }
@@ -240,7 +282,10 @@ class PlayScene extends Phaser.Scene {
 
     // Leader plays first card
     const leadCard = leader.getCard();
-    this.judgeSkitgubbe.inMarriage = false;
+    if (!leadCard) {
+      console.error('Leader has no cards');
+      return;
+    }
     this.judgeSkitgubbe.setLeadCard(leadCard);
     const leadSprite = this.spritesHash[leadCard];
     this.showFront(leadCard);
@@ -251,48 +296,52 @@ class PlayScene extends Phaser.Scene {
       x: positions[leaderIndex].x,
       duration: SPEED * 3,
       ease: 'Linear',
-      depth: leaderIndex
+      depth: this.current_depth++,
+      angle: leaderIndex === 0 ? -90 : leaderIndex === 1 ? 90 : 0
     });
 
     playLeadCard.on('complete', () => {
-      // Next player (clockwise) plays
-      const secondPlayerIndex = (leaderIndex + 1) % 3;
-      const secondPlayer = players[secondPlayerIndex];
-      const secondCard = secondPlayer.getCard();
-      this.judgeSkitgubbe.setOpponentCard(secondCard);
-      const secondSprite = this.spritesHash[secondCard];
-      this.showFront(secondCard);
+      // Determine next player based on leader
+      let nextPlayer;
+      if (leader === this.gameSkitgubbe.lowerHandPlayer) {
+        // When lower hand is leader, left hand plays next
+        nextPlayer = this.gameSkitgubbe.leftHandPlayer;
+      } else if (leader === this.gameSkitgubbe.leftHandPlayer) {
+        // When left hand is leader, right hand plays next
+        nextPlayer = this.gameSkitgubbe.rightHandPlayer;
+      } else if (leader === this.gameSkitgubbe.rightHandPlayer) {
+        // When right hand is leader, lower hand plays next
+        nextPlayer = this.gameSkitgubbe.lowerHandPlayer;
+      } else {
+        // Use opponent from judge for other cases
+        nextPlayer = this.judgeSkitgubbe.opponent;
+      }
+      
+      const opponentIndex = players.indexOf(nextPlayer);
+      const opponentCard = nextPlayer.getCard();
+      
+      if (!opponentCard) {
+        console.error('Opponent has no cards');
+        return;
+      }
+      
+      this.judgeSkitgubbe.setOpponentCard(opponentCard);
+      const opponentSprite = this.spritesHash[opponentCard];
+      this.showFront(opponentCard);
 
-      const playSecondCard = this.tweens.add({
-        targets: secondSprite,
-        y: positions[secondPlayerIndex].y,
-        x: positions[secondPlayerIndex].x,
+      const playOpponentCard = this.tweens.add({
+        targets: opponentSprite,
+        y: positions[opponentIndex].y,
+        x: positions[opponentIndex].x,
         duration: SPEED * 3,
         ease: 'Linear',
-        depth: secondPlayerIndex
+        depth: this.current_depth++,
+        angle: opponentIndex === 0 ? -90 : opponentIndex === 1 ? 90 : 0
       });
 
-      playSecondCard.on('complete', () => {
-        // Third player plays
-        const thirdPlayerIndex = (leaderIndex + 2) % 3;
-        const thirdPlayer = players[thirdPlayerIndex];
-        const thirdCard = thirdPlayer.getCard();
-        const thirdSprite = this.spritesHash[thirdCard];
-        this.showFront(thirdCard);
-
-        const playThirdCard = this.tweens.add({
-          targets: thirdSprite,
-          y: positions[thirdPlayerIndex].y,
-          x: positions[thirdPlayerIndex].x,
-          duration: SPEED * 3,
-          ease: 'Linear',
-          depth: thirdPlayerIndex
-        });
-
-        playThirdCard.on('complete', () => {
-          // Determine winner and handle trick
-          this.getTrick();
-        });
+      playOpponentCard.on('complete', () => {
+        // Determine winner and handle trick
+        this.getTrick();
       });
     });
   }
@@ -360,6 +409,14 @@ class PlayScene extends Phaser.Scene {
   }
 
   getTrick() {
+    console.log('Lead card:', this.judgeSkitgubbe.getLeadCard());
+    console.log('Opponent card:', this.judgeSkitgubbe.getOpponentCard());
+    
+    if (!this.judgeSkitgubbe.getLeadCard() || !this.judgeSkitgubbe.getOpponentCard()) {
+      console.error('Missing cards for trick evaluation');
+      return;
+    }
+    
     let winningPlayer = this.judgeSkitgubbe.getWinnerOfTrick();
     winningPlayer.addTrick([
       this.judgeSkitgubbe.getLeadCard(),
@@ -367,21 +424,21 @@ class PlayScene extends Phaser.Scene {
     ]);
     this.showBack(this.judgeSkitgubbe.getLeadCard());
     this.showBack(this.judgeSkitgubbe.getOpponentCard());
-    this.spritesHash[this.judgeSkitgubbe.getLeadCard()].setDepth(this.max_depth);
-    this.max_depth++;
-    this.spritesHash[this.judgeSkitgubbe.getOpponentCard()].setDepth(this.max_depth);
-    this.max_depth++;
+    this.spritesHash[this.judgeSkitgubbe.getLeadCard()].setDepth(this.current_depth);
+    this.current_depth++;
+    this.spritesHash[this.judgeSkitgubbe.getOpponentCard()].setDepth(this.current_depth);
+    this.current_depth++;
     console.log(
       'Cards played: Lead card ' + this.judgeSkitgubbe.getLeadCard() +
       ' : Opponent card ' + this.judgeSkitgubbe.getOpponentCard());
     console.log(
-      'Upper hand: ' + this.gameSkitgubbe.upperHandPlayer.getHand());
+      'Left hand: ' + this.gameSkitgubbe.leftHandPlayer.getHand());
     console.log(
       'Lower hand: ' + this.gameSkitgubbe.lowerHandPlayer.getHand());
     let winner_y;
-    if (winningPlayer == this.gameSkitgubbe.upperHandPlayer) {
+    if (winningPlayer == this.gameSkitgubbe.leftHandPlayer || winningPlayer == this.gameSkitgubbe.rightHandPlayer) {
       winner_y = TRICKS_FROM_HORISONTAL_BORDER +
-        20 * this.gameSkitgubbe.upperHandPlayer.getNrOfTricks();
+        20 * winningPlayer.getNrOfTricks();
     } else {
       winner_y = this.game.renderer.height - TRICKS_FROM_HORISONTAL_BORDER -
         20 * this.gameSkitgubbe.lowerHandPlayer.getNrOfTricks();
@@ -397,7 +454,7 @@ class PlayScene extends Phaser.Scene {
         y: winner_y,
         duration: SPEED * 3,
         ease: 'Linear',
-        //        depth: this.max_depth,
+        //        depth: this.current_depth,
         angle: 90
       });
       twGetTrick.on('complete', () => {
@@ -406,8 +463,8 @@ class PlayScene extends Phaser.Scene {
           let leaderCard = this.gameSkitgubbe.dealer.getTopCard();
           this.judgeSkitgubbe.leader.addCard(leaderCard);
           let yValue;
-          if (this.gameSkitgubbe.upperHandPlayer ==
-            this.judgeSkitgubbe.leader) {
+          if (this.judgeSkitgubbe.leader == this.gameSkitgubbe.leftHandPlayer ||
+              this.judgeSkitgubbe.leader == this.gameSkitgubbe.rightHandPlayer) {
             yValue = HAND_DIST_FROM_HORISONTAL_BORDERS;
           } else {
             yValue =
@@ -418,18 +475,18 @@ class PlayScene extends Phaser.Scene {
           let tw = this.tweens.add({
             targets: this.spritesHash[leaderCard],
             x: HAND_DIST_FROM_VERTICAL_BORDERS +
-              this.gameSkitgubbe.upperHandPlayer.getHand().length *
+              this.judgeSkitgubbe.leader.getHand().length *
               HAND_DIST_BETWEEN_CARDS,
             y: yValue,
             duration: SPEED,
-            depth: this.gameSkitgubbe.upperHandPlayer.getHand().length + 1
+            depth: this.judgeSkitgubbe.leader.getHand().length + 1
           });
           tw.on('complete', () => {
             let opponentCard = this.gameSkitgubbe.dealer.getTopCard();
             this.judgeSkitgubbe.opponent.addCard(opponentCard);
             let yValue;
-            if (this.gameSkitgubbe.upperHandPlayer ==
-              this.judgeSkitgubbe.opponent) {
+            if (this.judgeSkitgubbe.opponent == this.gameSkitgubbe.leftHandPlayer ||
+                this.judgeSkitgubbe.opponent == this.gameSkitgubbe.rightHandPlayer) {
               yValue = HAND_DIST_FROM_HORISONTAL_BORDERS;
             } else {
               yValue = this.game.renderer.height -
@@ -440,11 +497,11 @@ class PlayScene extends Phaser.Scene {
             let tw = this.tweens.add({
               targets: this.spritesHash[opponentCard],
               x: HAND_DIST_FROM_VERTICAL_BORDERS +
-                (this.gameSkitgubbe.upperHandPlayer.getHand().length - 1) *
+                (this.judgeSkitgubbe.opponent.getHand().length - 1) *
                 HAND_DIST_BETWEEN_CARDS,
               y: yValue,
               duration: SPEED,
-              depth: this.gameSkitgubbe.upperHandPlayer.getHand().length + 1
+              depth: this.judgeSkitgubbe.opponent.getHand().length + 1
             });
             tw.on('complete', () => {
               this.judgeSkitgubbe.isEndOfFirstPhase();
@@ -454,12 +511,22 @@ class PlayScene extends Phaser.Scene {
           });
 
         } else if (!this.judgeSkitgubbe.isEndOfSecondPhase()) {
-          if (this.gameSkitgubbe.lowerHandPlayer ==
-            this.judgeSkitgubbe.leader) {
-            this.setLowerHandInteractive();
+          // Deal new cards after trick completion
+          if (this.gameSkitgubbe.dealer.deck.length > 0) {
+            this.dealNewCardsAfterTrick(() => {
+              if (this.gameSkitgubbe.lowerHandPlayer == this.judgeSkitgubbe.leader) {
+                this.setLowerHandInteractive();
+              }
+              this.placeCardsNice();
+              this.playCards();
+            });
+          } else {
+            if (this.gameSkitgubbe.lowerHandPlayer == this.judgeSkitgubbe.leader) {
+              this.setLowerHandInteractive();
+            }
+            this.placeCardsNice();
+            this.playCards();
           }
-          this.placeCardsNice();
-          this.playCards();
         } else {
           let timer = this.time.delayedCall(SPEED * 4, () => {
             this.judgeSkitgubbe.setTotalPoints();
@@ -470,6 +537,85 @@ class PlayScene extends Phaser.Scene {
     });
   }
 
+  /////////////////////////////////////////////////////////////////////
+  // Deal new cards after trick completion
+  /////////////////////////////////////////////////////////////////////
+  dealNewCardsAfterTrick(callback) {
+    let cardsDealt = 0;
+
+    // Deal card to leader first
+    const leaderCard = this.gameSkitgubbe.dealer.getTopCard();
+    if (leaderCard) {
+      this.judgeSkitgubbe.leader.addCard(leaderCard);
+      
+      let xPos, yPos, angle = 0;
+      if (this.judgeSkitgubbe.leader === this.gameSkitgubbe.leftHandPlayer) {
+        xPos = HAND_DIST_FROM_VERTICAL_BORDERS;
+        yPos = this.game.renderer.height / 2 + HAND_DIST_BETWEEN_CARDS * (this.judgeSkitgubbe.leader.getHand().length - 1);
+        angle = -90;
+      } else if (this.judgeSkitgubbe.leader === this.gameSkitgubbe.rightHandPlayer) {
+        xPos = this.game.renderer.width - HAND_DIST_FROM_VERTICAL_BORDERS;
+        yPos = this.game.renderer.height / 2 + HAND_DIST_BETWEEN_CARDS * (this.judgeSkitgubbe.leader.getHand().length - 1);
+        angle = 90;
+      } else {
+        xPos = this.game.renderer.width / 2 - HAND_DIST_FROM_VERTICAL_BORDERS + HAND_DIST_BETWEEN_CARDS * (this.judgeSkitgubbe.leader.getHand().length - 1);
+        yPos = this.game.renderer.height - HAND_DIST_FROM_HORISONTAL_BORDERS;
+      }
+
+      this.tweens.add({
+        targets: this.spritesHash[leaderCard],
+        x: xPos,
+        y: yPos,
+        angle: angle,
+        duration: SPEED,
+        ease: 'Linear',
+        onComplete: () => {
+          if (this.judgeSkitgubbe.leader === this.gameSkitgubbe.lowerHandPlayer) {
+            this.showFront(leaderCard);
+          }
+          cardsDealt++;
+          if (cardsDealt === 2) callback();
+        }
+      });
+    }
+
+    // Deal card to opponent
+    const opponentCard = this.gameSkitgubbe.dealer.getTopCard();
+    if (opponentCard) {
+      this.judgeSkitgubbe.opponent.addCard(opponentCard);
+      
+      let xPos, yPos, angle = 0;
+      if (this.judgeSkitgubbe.opponent === this.gameSkitgubbe.leftHandPlayer) {
+        xPos = HAND_DIST_FROM_VERTICAL_BORDERS;
+        yPos = this.game.renderer.height / 2 + HAND_DIST_BETWEEN_CARDS * (this.judgeSkitgubbe.opponent.getHand().length - 1);
+        angle = -90;
+      } else if (this.judgeSkitgubbe.opponent === this.gameSkitgubbe.rightHandPlayer) {
+        xPos = this.game.renderer.width - HAND_DIST_FROM_VERTICAL_BORDERS;
+        yPos = this.game.renderer.height / 2 + HAND_DIST_BETWEEN_CARDS * (this.judgeSkitgubbe.opponent.getHand().length - 1);
+        angle = 90;
+      } else {
+        xPos = this.game.renderer.width / 2 - HAND_DIST_FROM_VERTICAL_BORDERS + HAND_DIST_BETWEEN_CARDS * (this.judgeSkitgubbe.opponent.getHand().length - 1);
+        yPos = this.game.renderer.height - HAND_DIST_FROM_HORISONTAL_BORDERS;
+      }
+
+      this.tweens.add({
+        targets: this.spritesHash[opponentCard],
+        x: xPos,
+        y: yPos,
+        angle: angle,
+        duration: SPEED,
+        ease: 'Linear',
+        onComplete: () => {
+          if (this.judgeSkitgubbe.opponent === this.gameSkitgubbe.lowerHandPlayer) {
+            this.showFront(opponentCard);
+          }
+          cardsDealt++;
+          if (cardsDealt === 2) callback();
+        }
+      });
+    }
+  }
+
   handleMarriage() {
     let marriages = this.judgeSkitgubbe.getMarriageCandidates(
       this.judgeSkitgubbe.leader.getHand());
@@ -477,7 +623,8 @@ class PlayScene extends Phaser.Scene {
       this.playCards();
       return;
     }
-    if (this.judgeSkitgubbe.leader == this.gameSkitgubbe.upperHandPlayer) {
+    if (this.judgeSkitgubbe.leader == this.gameSkitgubbe.leftHandPlayer ||
+        this.judgeSkitgubbe.leader == this.gameSkitgubbe.rightHandPlayer) {
       console.log('Upper hand can declare marriage in ' + marriages);
       this.disableLowerHandInteractive();
       this.judgeSkitgubbe.inMarriage = true;
@@ -561,33 +708,18 @@ class PlayScene extends Phaser.Scene {
   }  // End of handleMarriage()
 
   placeCardsNice() {
-    //    this.gameSkitgubbe.upperHandPlayer.sortHand();
     this.gameSkitgubbe.lowerHandPlayer.sortHand();
 
-    if (this.gameSkitgubbe.upperHandPlayer.getHand().length == 0) {
+    if (this.gameSkitgubbe.lowerHandPlayer.getHand().length == 0) {
       return;
     }
 
     let upperTween;
     let lowerTween;
-    for (let i = 0; i < this.gameSkitgubbe.upperHandPlayer.getHand().length;
-      i++) {
-      upperTween = this.tweens.add({
-        targets: this.spritesHash[this.gameSkitgubbe.upperHandPlayer
-          .getHand()[i]],
-        x: this.handDistFromVerticalBorder(false) +
-          i * HAND_DIST_BETWEEN_CARDS,
-        y: HAND_DIST_FROM_HORISONTAL_BORDERS,
-        duration: SPEED / 2,
-        ease: 'Linear',
-        depth: i
-      });
-
+    for (let i = 0; i < this.gameSkitgubbe.lowerHandPlayer.getHand().length; i++) {
       lowerTween = this.tweens.add({
-        targets: this.spritesHash[this.gameSkitgubbe.lowerHandPlayer
-          .getHand()[i]],
-        x: this.handDistFromVerticalBorder(false) +
-          i * HAND_DIST_BETWEEN_CARDS,
+        targets: this.spritesHash[this.gameSkitgubbe.lowerHandPlayer.getHand()[i]],
+        x: this.handDistFromVerticalBorder(false) + i * HAND_DIST_BETWEEN_CARDS,
         y: this.game.renderer.height - HAND_DIST_FROM_HORISONTAL_BORDERS,
         duration: SPEED / 2,
         ease: 'Linear',
