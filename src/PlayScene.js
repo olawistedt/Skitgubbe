@@ -453,13 +453,29 @@ class PlayScene extends Phaser.Scene {
 
     let timer = this.time.delayedCall(SPEED * 4, () => {
       console.log('Moving cards to winner pile...');
+      
+      let trickX, trickY;
+      if (winningPlayer == this.gameSkitgubbe.leftHandPlayer) {
+        // Left hand player wins - place in upper left corner
+        trickX = TRICKS_FROM_VERTICAL_BORDER;
+        trickY = TRICKS_FROM_HORISONTAL_BORDER + 20 * winningPlayer.getNrOfTricks();
+      } else if (winningPlayer == this.gameSkitgubbe.rightHandPlayer) {
+        // Right hand player wins - place in upper right corner
+        trickX = this.game.renderer.width - TRICKS_FROM_VERTICAL_BORDER;
+        trickY = TRICKS_FROM_HORISONTAL_BORDER + 20 * winningPlayer.getNrOfTricks();
+      } else {
+        // Lower hand player wins - place in lower right corner
+        trickX = this.game.renderer.width - TRICKS_FROM_VERTICAL_BORDER;
+        trickY = this.game.renderer.height - TRICKS_FROM_HORISONTAL_BORDER - 20 * this.gameSkitgubbe.lowerHandPlayer.getNrOfTricks();
+      }
+      
       let twGetTrick = this.tweens.add({
         targets: [
           this.spritesHash[this.judgeSkitgubbe.leadCard],
           this.spritesHash[this.judgeSkitgubbe.opponentCard]
         ],
-        x: this.game.renderer.width - TRICKS_FROM_VERTICAL_BORDER,
-        y: winner_y,
+        x: trickX,
+        y: trickY,
         duration: SPEED * 3,
         ease: 'Linear',
         angle: 90
