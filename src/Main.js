@@ -19,8 +19,8 @@ const CST = {
 }
 
 let game = new Phaser.Game({
-  width: 1536 * 0.70,
-  height: 2048 * 0.35,
+  width: 819,
+  height: 1093,
   audio: { disableWebAudio: true },
   transparent: true,
   render: {
