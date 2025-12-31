@@ -276,9 +276,23 @@ class PlayScene extends Phaser.Scene {
       console.log(`${playerNames[index]}: ${player.getHand()}`);
     });
 
+    // Check if we should start phase 2 before trying to play
+    if (this.shouldStartPhase2()) {
+      console.log('Phase 1 ended - starting Phase 2');
+      this.startPhase2();
+      return;
+    }
+
     // Find leader index
     const leader = this.judgeSkitgubbe.leader;
     const leaderIndex = players.indexOf(leader);
+
+    // Check if leader has cards to play
+    if (leader.getHand().length === 0) {
+      console.log('Leader has no cards - phase 1 ends');
+      this.startPhase2();
+      return;
+    }
 
     // Leader plays first card
     const leadCard = leader.getCard();
@@ -321,7 +335,8 @@ class PlayScene extends Phaser.Scene {
       const opponentCard = nextPlayer.getCard();
       
       if (!opponentCard) {
-        console.error('Opponent has no cards');
+        console.log('Opponent has no cards - phase 1 ends');
+        this.startPhase2();
         return;
       }
       
@@ -416,14 +431,42 @@ class PlayScene extends Phaser.Scene {
     console.log("=== GETTING TRICK ===");
     console.log('Lead card:', this.judgeSkitgubbe.getLeadCard());
     console.log('Opponent card:', this.judgeSkitgubbe.getOpponentCard());
+    console.log('Phase 1:', this.judgeSkitgubbe.firstPhase);
     
     if (!this.judgeSkitgubbe.getLeadCard() || !this.judgeSkitgubbe.getOpponentCard()) {
       console.error('Missing cards for trick evaluation');
       return;
     }
     
-    let winningPlayer = this.judgeSkitgubbe.getWinnerOfTrick();
+    let winningPlayer;
+    if (this.judgeSkitgubbe.firstPhase) {
+      // Phase 1: Only card value matters, highest wins
+      const leadValue = this.getCardValue(this.judgeSkitgubbe.getLeadCard());
+      const opponentValue = this.getCardValue(this.judgeSkitgubbe.getOpponentCard());
+      
+      console.log('Lead card value:', leadValue, 'Opponent card value:', opponentValue);
+      
+      if (leadValue === opponentValue) {
+        console.log('STUNSA (bounce) - equal cards!');
+        // Handle stunsa - cards stay on table, same player leads again
+        // For now, just continue with normal logic
+      }
+      
+      if (leadValue > opponentValue) {
+        winningPlayer = this.judgeSkitgubbe.leader;
+      } else {
+        winningPlayer = this.judgeSkitgubbe.opponent;
+      }
+    } else {
+      // Phase 2: Use existing judge logic
+      winningPlayer = this.judgeSkitgubbe.getWinnerOfTrick();
+    }
+    
     console.log('Winning player:', winningPlayer.getName());
+    
+    // Winner becomes the leader for the next trick
+    this.judgeSkitgubbe.leader = winningPlayer;
+    console.log('New leader for next trick:', winningPlayer.getName());
     
     winningPlayer.addTrick([
       this.judgeSkitgubbe.getLeadCard(),
@@ -807,20 +850,27 @@ class PlayScene extends Phaser.Scene {
     }
   }
 
+  getCardValue(cardId) {
+    // Extract numeric value from card ID (e.g., 'h07' -> 7, 'c12' -> 12)
+    const valueStr = cardId.substring(1);
+    return parseInt(valueStr, 10);
+  }
+
   shouldStartPhase2() {
-    // Phase 2 starts when deck is empty and all players have no cards in hand
-    const allPlayersOutOfCards = 
-      this.gameSkitgubbe.leftHandPlayer.getHand().length === 0 &&
-      this.gameSkitgubbe.rightHandPlayer.getHand().length === 0 &&
-      this.gameSkitgubbe.lowerHandPlayer.getHand().length === 0;
+    // Phase 2 starts when deck is empty and current player has no cards to play
+    if (this.gameSkitgubbe.dealer.deck.length > 0) {
+      return false; // Still have cards in deck
+    }
     
-    return this.gameSkitgubbe.dealer.deck.length === 0 && allPlayersOutOfCards;
+    // Check if current leader has no cards to play
+    const leader = this.judgeSkitgubbe.leader;
+    return leader.getHand().length === 0;
   }
 
   startPhase2() {
     console.log('=== STARTING PHASE 2 ===');
     
-    // Give each player their tricks as their new hand
+    // Players with remaining cards expose them and keep them for phase 2
     const players = [
       this.gameSkitgubbe.leftHandPlayer,
       this.gameSkitgubbe.rightHandPlayer,
@@ -828,18 +878,34 @@ class PlayScene extends Phaser.Scene {
     ];
     
     players.forEach(player => {
-      const tricks = player.getTricks();
-      console.log(`${player.getName()} gets ${tricks.length} cards from tricks`);
-      
-      // Add trick cards to hand
-      tricks.forEach(trickCards => {
-        trickCards.forEach(card => {
-          player.addCard(card);
+      const remainingCards = player.getHand();
+      if (remainingCards.length > 0) {
+        console.log(`${player.getName()} keeps ${remainingCards.length} cards from hand`);
+        // Show remaining cards (expose them)
+        remainingCards.forEach(card => {
+          if (player !== this.gameSkitgubbe.lowerHandPlayer) {
+            this.showFront(card);
+          }
         });
-      });
+      }
       
-      // Clear tricks since they're now in hand
-      player.clearTricks();
+      // Add trick cards to hand if getTricks method exists
+      if (typeof player.getTricks === 'function') {
+        const tricks = player.getTricks();
+        console.log(`${player.getName()} gets ${tricks.length} tricks`);
+        tricks.forEach(trickCards => {
+          trickCards.forEach(card => {
+            player.addCard(card);
+          });
+        });
+        
+        // Clear tricks since they're now in hand
+        if (typeof player.clearTricks === 'function') {
+          player.clearTricks();
+        }
+      } else {
+        console.log(`${player.getName()} - getTricks method not available`);
+      }
     });
     
     // Set phase 2 flag
