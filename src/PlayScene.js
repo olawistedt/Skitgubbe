@@ -718,6 +718,34 @@ class PlayScene extends Phaser.Scene {
         depth: i
       });
     }
+
+    // Place left hand cards nicely
+    this.gameSkitgubbe.leftHandPlayer.sortHand();
+    for (let i = 0; i < this.gameSkitgubbe.leftHandPlayer.getHand().length; i++) {
+      this.tweens.add({
+        targets: this.spritesHash[this.gameSkitgubbe.leftHandPlayer.getHand()[i]],
+        x: HAND_DIST_FROM_VERTICAL_BORDERS,
+        y: this.game.renderer.height / 2 + HAND_DIST_BETWEEN_CARDS * i,
+        angle: -90,
+        duration: SPEED / 2,
+        ease: 'Linear',
+        depth: i
+      });
+    }
+
+    // Place right hand cards nicely
+    this.gameSkitgubbe.rightHandPlayer.sortHand();
+    for (let i = 0; i < this.gameSkitgubbe.rightHandPlayer.getHand().length; i++) {
+      this.tweens.add({
+        targets: this.spritesHash[this.gameSkitgubbe.rightHandPlayer.getHand()[i]],
+        x: this.game.renderer.width - HAND_DIST_FROM_VERTICAL_BORDERS,
+        y: this.game.renderer.height / 2 + HAND_DIST_BETWEEN_CARDS * i,
+        angle: 90,
+        duration: SPEED / 2,
+        ease: 'Linear',
+        depth: i
+      });
+    }
   }
 
   setLowerHandInteractive() {
