@@ -33,6 +33,15 @@ class PlayScene extends Phaser.Scene {
       lowerHand: []
     };
     
+    // Phase 2 state
+    this.phase2State = {
+      tableCards: [],
+      trumpSuit: null,
+      currentPlayer: null,
+      turnOrder: [],
+      mustPickUp: false
+    };
+    
     if (TEST) {
       this.gameSkitgubbe = new gameSkitgubbe(3, 3, this.judgeSkitgubbe);
     } else {
@@ -268,6 +277,15 @@ class PlayScene extends Phaser.Scene {
   }
 
   playCards() {
+    if (!this.judgeSkitgubbe.firstPhase) {
+      this.playCardsPhase2();
+      return;
+    }
+    
+    this.playCardsPhase1();
+  }
+  
+  playCardsPhase1() {
     const players = [
       this.gameSkitgubbe.leftHandPlayer,
       this.gameSkitgubbe.rightHandPlayer,
@@ -324,109 +342,154 @@ class PlayScene extends Phaser.Scene {
       targets: leadSprite,
       y: positions[leaderIndex].y,
       x: positions[leaderIndex].x,
-      duration: SPEED * 3,
+      duration: this.judgeSkitgubbe.firstPhase ? SPEED * 3 : ANIMATION_SPEED_PHASE_2,
       ease: 'Linear',
       depth: this.current_depth++,
       angle: 0
     });
 
     playLeadCard.on('complete', () => {
-      // Determine next player using round-robin to ensure all players participate
-      const players = [
-        this.gameSkitgubbe.leftHandPlayer,
-        this.gameSkitgubbe.rightHandPlayer,
-        this.gameSkitgubbe.lowerHandPlayer
-      ];
-      
-      const leaderIndex = players.indexOf(leader);
-      let nextPlayer = null;
-      
-      // Find next player with cards who isn't the leader
-      for (let i = 1; i <= players.length; i++) {
-        const candidateIndex = (leaderIndex + i) % players.length;
-        const candidate = players[candidateIndex];
-        if (candidate !== leader && candidate.getHand().length > 0) {
-          nextPlayer = candidate;
-          break;
+      if (this.judgeSkitgubbe.firstPhase) {
+        // Phase 1: Only 2 players per trick
+        const players = [
+          this.gameSkitgubbe.leftHandPlayer,
+          this.gameSkitgubbe.rightHandPlayer,
+          this.gameSkitgubbe.lowerHandPlayer
+        ];
+        
+        const leaderIndex = players.indexOf(leader);
+        let nextPlayer = null;
+        
+        // Find next player with cards who isn't the leader
+        for (let i = 1; i <= players.length; i++) {
+          const candidateIndex = (leaderIndex + i) % players.length;
+          const candidate = players[candidateIndex];
+          if (candidate !== leader && candidate.getHand().length > 0) {
+            nextPlayer = candidate;
+            break;
+          }
         }
-      }
-      
-      if (!nextPlayer) {
-        console.log('No opponent available - phase 1 ends');
-        this.startPhase2();
-        return;
-      }
-      
-      const opponentIndex = players.indexOf(nextPlayer);
-      const opponentCard = this.selectOpponentCard(nextPlayer, leadCard);
-      
-      if (!opponentCard) {
-        console.log('Opponent has no cards - phase 1 ends');
-        this.startPhase2();
-        return;
-      }
-      
-      this.judgeSkitgubbe.setOpponentCard(opponentCard);
-      // Update the judge's opponent to match who actually played
-      this.judgeSkitgubbe.opponent = nextPlayer;
-      const opponentSprite = this.spritesHash[opponentCard];
-      this.showFront(opponentCard);
+        
+        if (!nextPlayer) {
+          console.log('No opponent available - phase 1 ends');
+          this.startPhase2();
+          return;
+        }
+        
+        const opponentIndex = players.indexOf(nextPlayer);
+        const opponentCard = this.selectOpponentCard(nextPlayer, leadCard);
+        
+        if (!opponentCard) {
+          console.log('Opponent has no cards - phase 1 ends');
+          this.startPhase2();
+          return;
+        }
+        
+        this.judgeSkitgubbe.setOpponentCard(opponentCard);
+        this.judgeSkitgubbe.opponent = nextPlayer;
+        const opponentSprite = this.spritesHash[opponentCard];
+        this.showFront(opponentCard);
 
-      const playOpponentCard = this.tweens.add({
-        targets: opponentSprite,
-        y: positions[opponentIndex].y,
-        x: positions[opponentIndex].x,
-        duration: SPEED * 3,
-        ease: 'Linear',
-        depth: this.current_depth++,
-        angle: 0
-      });
+        const playOpponentCard = this.tweens.add({
+          targets: opponentSprite,
+          y: positions[opponentIndex].y,
+          x: positions[opponentIndex].x,
+          duration: this.judgeSkitgubbe.firstPhase ? SPEED * 3 : ANIMATION_SPEED_PHASE_2,
+          ease: 'Linear',
+          depth: this.current_depth++,
+          angle: 0
+        });
 
-      playOpponentCard.on('complete', () => {
-        // Determine winner and handle trick
-        this.getTrick();
-      });
+        playOpponentCard.on('complete', () => {
+          this.getTrick();
+        });
+      }
     });
   }
 
   cardIsPressed(sprite) {
-    console.log('Pointer down on card ' + sprite.name);
     let success = true;
     if (!TEST) {
       success = this.gameSkitgubbe.lowerHandPlayer.getCard(sprite.name);
     }
     if (success) {
-      //      this.snd_play_card.play();
       this.judgeSkitgubbe.inMarriage = false;
-      if (this.judgeSkitgubbe.leader ==
-        this.gameSkitgubbe.lowerHandPlayer) {
-        this.judgeSkitgubbe.setLeadCard(sprite.name);
-      } else {
-        this.judgeSkitgubbe.setOpponentCard(sprite.name);
-      }
-      let playLowerToTable = this.tweens.add({
-        targets: sprite,
-        y: this.game.renderer.height / 2,
-        x: this.game.renderer.width / 2,
-        duration: SPEED * 3,
-        ease: 'Linear',
-        depth: 1,
-        angle: 0
-      });
-
-      this.disableLowerHandInteractive();
-
-      playLowerToTable.on('complete', () => {
-        if (this.judgeSkitgubbe.leader ==
-          this.gameSkitgubbe.lowerHandPlayer) {
-          this.playUpperHandAfterLowerHand();
+      
+      if (this.judgeSkitgubbe.firstPhase) {
+        // Phase 1 logic
+        if (this.judgeSkitgubbe.leader == this.gameSkitgubbe.lowerHandPlayer) {
+          this.judgeSkitgubbe.setLeadCard(sprite.name);
         } else {
-          this.getTrick();
+          this.judgeSkitgubbe.setOpponentCard(sprite.name);
         }
-      });
-    } else {  // The card pressed cannot be played.
+        
+        let playLowerToTable = this.tweens.add({
+          targets: sprite,
+          y: this.game.renderer.height / 2,
+          x: this.game.renderer.width / 2,
+          duration: SPEED * 3,
+          ease: 'Linear',
+          depth: 1,
+          angle: 0
+        });
+
+        this.disableLowerHandInteractive();
+
+        playLowerToTable.on('complete', () => {
+          if (this.judgeSkitgubbe.leader == this.gameSkitgubbe.lowerHandPlayer) {
+            this.playUpperHandAfterLowerHand();
+          } else {
+            this.getTrick();
+          }
+        });
+      } else {
+        // Phase 2 logic
+        if (this.phase2State.currentPlayer !== this.gameSkitgubbe.lowerHandPlayer) {
+          console.log('Not your turn!');
+          return;
+        }
+        
+        // Check if card can be played
+        if (this.phase2State.tableCards.length > 0) {
+          const topCard = this.phase2State.tableCards[this.phase2State.tableCards.length - 1];
+          if (!this.canBeatCard(sprite.name, topCard)) {
+            console.log('Cannot beat top card - must pick up or play different card');
+            this.snd_wrong_card.play();
+            return;
+          }
+        }
+        
+        this.disableLowerHandInteractive();
+        this.hidePickUpButton();
+        this.playPhase2Card(this.gameSkitgubbe.lowerHandPlayer, sprite.name);
+      }
+    } else {
       this.snd_wrong_card.play();
     }
+  }
+  
+  canBeatCard(cardToPlay, cardToBeat) {
+    const playValue = this.getCardValue(cardToPlay);
+    const playSuit = this.getCardSuit(cardToPlay);
+    const beatValue = this.getCardValue(cardToBeat);
+    const beatSuit = this.getCardSuit(cardToBeat);
+    
+    const isPlayTrump = playSuit === this.phase2State.trumpSuit;
+    const isBeatTrump = beatSuit === this.phase2State.trumpSuit;
+    
+    if (isBeatTrump && !isPlayTrump) {
+      return false; // Can't beat trump with non-trump
+    }
+    
+    if (!isBeatTrump && isPlayTrump) {
+      return true; // Trump beats non-trump
+    }
+    
+    if (playSuit === beatSuit) {
+      return playValue > beatValue; // Same suit, higher value
+    }
+    
+    return false; // Different non-trump suits don't beat
   }
 
   playUpperHandAfterLowerHand() {
@@ -442,7 +505,7 @@ class PlayScene extends Phaser.Scene {
       targets: ai_sprite,
       y: this.game.renderer.height / 2,
       x: this.game.renderer.width / 2 + 15,  // Place slightly to the right
-      duration: SPEED * 3,
+      duration: this.judgeSkitgubbe.firstPhase ? SPEED * 3 : ANIMATION_SPEED_PHASE_2,
       ease: 'Linear',
       depth: this.current_depth++,  // Higher depth to appear on top
       angle: 0
@@ -484,8 +547,27 @@ class PlayScene extends Phaser.Scene {
         winningPlayer = this.judgeSkitgubbe.opponent;
       }
     } else {
-      // Phase 2: Use existing judge logic
-      winningPlayer = this.judgeSkitgubbe.getWinnerOfTrick();
+      // Phase 2: Use existing judge logic, but handle 3 players if available
+      if (this.thirdPlayerCard && this.thirdPlayer) {
+        // 3-player trick in Phase 2
+        const leadValue = this.getCardValue(this.judgeSkitgubbe.getLeadCard());
+        const opponentValue = this.getCardValue(this.judgeSkitgubbe.getOpponentCard());
+        const thirdValue = this.getCardValue(this.thirdPlayerCard);
+        
+        console.log('3-player trick - Lead:', leadValue, 'Opponent:', opponentValue, 'Third:', thirdValue);
+        
+        // Find highest card
+        if (leadValue >= opponentValue && leadValue >= thirdValue) {
+          winningPlayer = this.judgeSkitgubbe.leader;
+        } else if (opponentValue >= leadValue && opponentValue >= thirdValue) {
+          winningPlayer = this.judgeSkitgubbe.opponent;
+        } else {
+          winningPlayer = this.thirdPlayer;
+        }
+      } else {
+        // 2-player trick in Phase 2
+        winningPlayer = this.judgeSkitgubbe.getWinnerOfTrick();
+      }
     }
     
     console.log('Winning player:', winningPlayer.getName());
@@ -499,6 +581,11 @@ class PlayScene extends Phaser.Scene {
       this.judgeSkitgubbe.getOpponentCard()
     ];
     
+    // Add third card if it exists
+    if (this.thirdPlayerCard) {
+      trickCards.push(this.thirdPlayerCard);
+    }
+    
     if (winningPlayer === this.gameSkitgubbe.leftHandPlayer) {
       this.playerTricks.leftHand.push(...trickCards);
     } else if (winningPlayer === this.gameSkitgubbe.rightHandPlayer) {
@@ -507,12 +594,16 @@ class PlayScene extends Phaser.Scene {
       this.playerTricks.lowerHand.push(...trickCards);
     }
     
-    winningPlayer.addTrick([
-      this.judgeSkitgubbe.getLeadCard(),
-      this.judgeSkitgubbe.getOpponentCard()
-    ]);
+    winningPlayer.addTrick(trickCards);
     this.showBack(this.judgeSkitgubbe.getLeadCard());
     this.showBack(this.judgeSkitgubbe.getOpponentCard());
+    if (this.thirdPlayerCard) {
+      this.showBack(this.thirdPlayerCard);
+    }
+    
+    // Clear third player data for next trick
+    this.thirdPlayerCard = null;
+    this.thirdPlayer = null;
     this.spritesHash[this.judgeSkitgubbe.getLeadCard()].setDepth(this.current_depth);
     this.current_depth++;
     this.spritesHash[this.judgeSkitgubbe.getOpponentCard()].setDepth(this.current_depth);
@@ -790,9 +881,13 @@ class PlayScene extends Phaser.Scene {
     let upperTween;
     let lowerTween;
     for (let i = 0; i < this.gameSkitgubbe.lowerHandPlayer.getHand().length; i++) {
+      const cardSpacing = this.judgeSkitgubbe.firstPhase ? HAND_DIST_BETWEEN_CARDS : 15;
+      const baseX = this.judgeSkitgubbe.firstPhase ? this.handDistFromVerticalBorder(false) : 
+        this.game.renderer.width / 2 - (this.gameSkitgubbe.lowerHandPlayer.getHand().length - 1) * cardSpacing / 2;
+      
       lowerTween = this.tweens.add({
         targets: this.spritesHash[this.gameSkitgubbe.lowerHandPlayer.getHand()[i]],
-        x: this.handDistFromVerticalBorder(false) + i * HAND_DIST_BETWEEN_CARDS,
+        x: baseX + i * cardSpacing,
         y: this.game.renderer.height - HAND_DIST_FROM_HORISONTAL_BORDERS,
         duration: SPEED / 2,
         ease: 'Linear',
@@ -802,11 +897,17 @@ class PlayScene extends Phaser.Scene {
 
     // Place left hand cards nicely
     this.gameSkitgubbe.leftHandPlayer.sortHand();
-    for (let i = 0; i < this.gameSkitgubbe.leftHandPlayer.getHand().length; i++) {
+    const leftHandSize = this.gameSkitgubbe.leftHandPlayer.getHand().length;
+    for (let i = 0; i < leftHandSize; i++) {
+      const cardSpacing = this.judgeSkitgubbe.firstPhase ? HAND_DIST_BETWEEN_CARDS : 15;
+      const yOffset = this.judgeSkitgubbe.firstPhase ? 
+        cardSpacing * i : 
+        cardSpacing * (i - (leftHandSize - 1) / 2);
+      
       this.tweens.add({
         targets: this.spritesHash[this.gameSkitgubbe.leftHandPlayer.getHand()[i]],
         x: HAND_DIST_FROM_VERTICAL_BORDERS,
-        y: this.game.renderer.height / 2 + HAND_DIST_BETWEEN_CARDS * i,
+        y: this.game.renderer.height / 2 + yOffset,
         angle: -90,
         duration: SPEED / 2,
         ease: 'Linear',
@@ -816,11 +917,17 @@ class PlayScene extends Phaser.Scene {
 
     // Place right hand cards nicely
     this.gameSkitgubbe.rightHandPlayer.sortHand();
-    for (let i = 0; i < this.gameSkitgubbe.rightHandPlayer.getHand().length; i++) {
+    const rightHandSize = this.gameSkitgubbe.rightHandPlayer.getHand().length;
+    for (let i = 0; i < rightHandSize; i++) {
+      const cardSpacing = this.judgeSkitgubbe.firstPhase ? HAND_DIST_BETWEEN_CARDS : 15;
+      const yOffset = this.judgeSkitgubbe.firstPhase ? 
+        cardSpacing * i : 
+        cardSpacing * (i - (rightHandSize - 1) / 2);
+      
       this.tweens.add({
         targets: this.spritesHash[this.gameSkitgubbe.rightHandPlayer.getHand()[i]],
         x: this.game.renderer.width - HAND_DIST_FROM_VERTICAL_BORDERS,
-        y: this.game.renderer.height / 2 + HAND_DIST_BETWEEN_CARDS * i,
+        y: this.game.renderer.height / 2 + yOffset,
         angle: 90,
         duration: SPEED / 2,
         ease: 'Linear',
@@ -1013,12 +1120,261 @@ class PlayScene extends Phaser.Scene {
     // Set phase 2 flag
     this.judgeSkitgubbe.firstPhase = false;
     
+    // Initialize Phase 2 state
+    this.initializePhase2();
+    
     // Rearrange cards and continue playing
     this.placeCardsNice();
     if (this.gameSkitgubbe.lowerHandPlayer == this.judgeSkitgubbe.leader) {
       this.setLowerHandInteractive();
     }
     this.playCards();
+  }
+  
+  initializePhase2() {
+    console.log('=== INITIALIZING PHASE 2 ===');
+    
+    // Determine trump suit (lowest card from remaining deck or random)
+    const suits = ['c', 'd', 'h', 's'];
+    this.phase2State.trumpSuit = suits[Math.floor(Math.random() * suits.length)];
+    console.log('Trump suit:', this.phase2State.trumpSuit);
+    
+    // Update trump display
+    const trumpNames = { 'c': 'Clubs', 'd': 'Diamonds', 'h': 'Hearts', 's': 'Spades' };
+    this.showTrumpText.setText(`Trump: ${trumpNames[this.phase2State.trumpSuit]}`);
+    
+    // Set turn order (start with player who has most cards)
+    const players = [
+      this.gameSkitgubbe.leftHandPlayer,
+      this.gameSkitgubbe.rightHandPlayer,
+      this.gameSkitgubbe.lowerHandPlayer
+    ];
+    
+    // Sort by hand size (most cards first)
+    this.phase2State.turnOrder = [...players].sort((a, b) => b.getHand().length - a.getHand().length);
+    this.phase2State.currentPlayer = this.phase2State.turnOrder[0];
+    
+    console.log('Turn order:', this.phase2State.turnOrder.map(p => p.getName()));
+    console.log('Starting player:', this.phase2State.currentPlayer.getName());
+    
+    // Clear table
+    this.phase2State.tableCards = [];
+    this.phase2State.mustPickUp = false;
+  }
+  
+  playCardsPhase2() {
+    console.log('=== PHASE 2 TURN ===');
+    console.log('Current player:', this.phase2State.currentPlayer.getName());
+    console.log('Table cards:', this.phase2State.tableCards);
+    console.log('Trump suit:', this.phase2State.trumpSuit);
+    
+    // Check if game is over
+    if (this.isPhase2GameOver()) {
+      this.endGame();
+      return;
+    }
+    
+    const currentPlayer = this.phase2State.currentPlayer;
+    
+    if (currentPlayer === this.gameSkitgubbe.lowerHandPlayer) {
+      // Human player turn - enable interaction
+      this.setLowerHandInteractive();
+      
+      // Add pick up button if there are cards on table
+      if (this.phase2State.tableCards.length > 0) {
+        this.showPickUpButton();
+      }
+      // Wait for human input
+    } else {
+      // AI player turn
+      this.handleAIPhase2Turn(currentPlayer);
+    }
+  }
+  
+  handleAIPhase2Turn(player) {
+    const hand = player.getHand();
+    if (hand.length === 0) {
+      this.nextPhase2Player();
+      return;
+    }
+    
+    let cardToPlay = null;
+    
+    if (this.phase2State.tableCards.length === 0) {
+      // No cards on table - play any card
+      cardToPlay = hand[0];
+    } else {
+      // Try to beat the top card
+      const topCard = this.phase2State.tableCards[this.phase2State.tableCards.length - 1];
+      cardToPlay = this.findBeatingCard(hand, topCard);
+      
+      if (!cardToPlay) {
+        // Can't beat - must pick up all table cards
+        this.pickUpTableCards(player);
+        return;
+      }
+    }
+    
+    // Play the card
+    this.playPhase2Card(player, cardToPlay);
+  }
+  
+  findBeatingCard(hand, cardToBeat) {
+    const beatValue = this.getCardValue(cardToBeat);
+    const beatSuit = this.getCardSuit(cardToBeat);
+    const isBeatTrump = beatSuit === this.phase2State.trumpSuit;
+    
+    // Find cards that can beat
+    const beatingCards = hand.filter(card => {
+      const cardValue = this.getCardValue(card);
+      const cardSuit = this.getCardSuit(card);
+      const isCardTrump = cardSuit === this.phase2State.trumpSuit;
+      
+      if (isBeatTrump && !isCardTrump) {
+        return false; // Can't beat trump with non-trump
+      }
+      
+      if (!isBeatTrump && isCardTrump) {
+        return true; // Trump beats non-trump
+      }
+      
+      if (cardSuit === beatSuit) {
+        return cardValue > beatValue; // Same suit, higher value
+      }
+      
+      return false; // Different non-trump suits don't beat
+    });
+    
+    // Return lowest beating card if any
+    if (beatingCards.length > 0) {
+      return beatingCards.reduce((min, card) => 
+        this.getCardValue(card) < this.getCardValue(min) ? card : min
+      );
+    }
+    
+    return null;
+  }
+  
+  playPhase2Card(player, cardId) {
+    console.log(`${player.getName()} plays ${cardId}`);
+    
+    // Remove card from hand
+    player.getCard(cardId);
+    
+    // Add to table
+    this.phase2State.tableCards.push(cardId);
+    
+    // Show card
+    this.showFront(cardId);
+    
+    // Animate to table position
+    const tableX = this.game.renderer.width / 2 + (this.phase2State.tableCards.length - 1) * 20;
+    const tableY = this.game.renderer.height / 2;
+    
+    this.tweens.add({
+      targets: this.spritesHash[cardId],
+      x: tableX,
+      y: tableY,
+      angle: 0,
+      duration: ANIMATION_SPEED_PHASE_2,
+      ease: 'Linear',
+      onComplete: () => {
+        // Check if player is out of cards
+        if (player.getHand().length === 0) {
+          console.log(`${player.getName()} is out of cards!`);
+          // Remove from turn order
+          this.phase2State.turnOrder = this.phase2State.turnOrder.filter(p => p !== player);
+        }
+        
+        this.nextPhase2Player();
+      }
+    });
+  }
+  
+  pickUpTableCards(player) {
+    console.log(`${player.getName()} picks up ${this.phase2State.tableCards.length} cards`);
+    
+    // Add all table cards to player's hand
+    this.phase2State.tableCards.forEach(card => {
+      player.addCard(card);
+    });
+    
+    // Clear table
+    this.phase2State.tableCards = [];
+    
+    // Animate cards to player's hand
+    this.placeCardsNice();
+    
+    // Player who picked up becomes current player
+    this.phase2State.currentPlayer = player;
+    
+    setTimeout(() => {
+      this.playCardsPhase2();
+    }, ANIMATION_SPEED_PHASE_2);
+  }
+  
+  nextPhase2Player() {
+    // Find next player in turn order
+    const currentIndex = this.phase2State.turnOrder.indexOf(this.phase2State.currentPlayer);
+    const nextIndex = (currentIndex + 1) % this.phase2State.turnOrder.length;
+    this.phase2State.currentPlayer = this.phase2State.turnOrder[nextIndex];
+    
+    setTimeout(() => {
+      this.playCardsPhase2();
+    }, 500);
+  }
+  
+  isPhase2GameOver() {
+    // Game over when only one player has cards or all players are out
+    const playersWithCards = this.phase2State.turnOrder.filter(p => p.getHand().length > 0);
+    return playersWithCards.length <= 1;
+  }
+  
+  endGame() {
+    console.log('=== GAME OVER ===');
+    const playersWithCards = this.phase2State.turnOrder.filter(p => p.getHand().length > 0);
+    
+    if (playersWithCards.length === 0) {
+      console.log('All players finished!');
+    } else {
+      console.log(`${playersWithCards[0].getName()} is the Skitgubbe (loser)!`);
+    }
+  }
+  
+  getCardSuit(cardId) {
+    return cardId.charAt(0);
+  }
+  
+  showPickUpButton() {
+    if (this.pickUpButton) {
+      this.pickUpButton.destroy();
+    }
+    
+    this.pickUpButton = this.add.text(
+      this.game.renderer.width / 2,
+      this.game.renderer.height - 300,
+      'Pick Up Cards',
+      { 
+        fontFamily: 'Arial', 
+        fontSize: '16px', 
+        backgroundColor: '#ff6666',
+        padding: { x: 10, y: 5 }
+      }
+    )
+    .setOrigin(0.5)
+    .setInteractive()
+    .on('pointerdown', () => {
+      this.hidePickUpButton();
+      this.disableLowerHandInteractive();
+      this.pickUpTableCards(this.gameSkitgubbe.lowerHandPlayer);
+    });
+  }
+  
+  hidePickUpButton() {
+    if (this.pickUpButton) {
+      this.pickUpButton.destroy();
+      this.pickUpButton = null;
+    }
   }
 
   handDistFromVerticalBorder(inDeal) {
